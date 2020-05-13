@@ -11,7 +11,7 @@ import custom_transforms
 import models
 from utils import tensor2array, save_checkpoint, save_path_formatter, log_output_tensorboard
 
-from loss_functions import photometric_reconstruction_loss, explainability_loss, smooth_loss, compute_errors
+from loss_functions import photometric_reconstruction_loss, explainability_loss, smooth_loss, compute_errors, photometric_reconstruction_loss_new
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -273,6 +273,20 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                                                depth, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
+        
+        ## My code new
+        t3_disparities = disp_net(ref_imgs[1])
+        t3_depth = [1/disp for disp in t3_disparities]
+        
+        #loss_1_new = photometric_reconstruction_loss_new(ref_imgs, intrinsics, t3_depth, explainability_mask, pose,device,
+        #                                                       args.rotation_mode, args.padding_mode)
+        
+        loss_1_new = photometric_reconstruction_loss_new(ref_imgs, intrinsics, t3_depth, None, pose,device,
+                                                               args.rotation_mode, args.padding_mode)
+        
+        loss_1 = loss_1 + loss_1_new
+        ## End of my code
+        
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask)
         else:
@@ -350,6 +364,21 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
                                                                intrinsics, depth,
                                                                explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
+        
+        
+        ## My code new
+        t3_disparities = disp_net(ref_imgs[1])
+        t3_depth = 1/t3_disparities
+        
+        #loss_1_new = photometric_reconstruction_loss_new(ref_imgs, intrinsics, t3_depth, explainability_mask, pose,device,
+        #                                                       args.rotation_mode, args.padding_mode)
+        
+        loss_1_new = photometric_reconstruction_loss_new(ref_imgs, intrinsics, t3_depth, None, pose,device,
+                                                               args.rotation_mode, args.padding_mode)
+        
+        loss_1 = loss_1 + loss_1_new
+        ## End of my code
+        
         loss_1 = loss_1.item()
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask).item()

@@ -2,7 +2,7 @@ from __future__ import division
 import torch
 from torch import nn
 import torch.nn.functional as F
-from inverse_warp import inverse_warp
+from inverse_warp import inverse_warp,multiply_pose,inverse_warp_new
 
 
 def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
@@ -56,6 +56,41 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
         diff_results.append(diff)
     return total_loss, warped_results, diff_results
 
+def photometric_reconstruction_loss_new(ref_imgs, intrinsics,
+                                    depth, explainability_mask, pose,device,
+                                    rotation_mode='euler', padding_mode='zeros'):
+    def one_scale(depth, explainability_mask):
+        assert(explainability_mask is None or depth.size()[2:] == explainability_mask.size()[2:])
+        assert(pose.size(1) == len(ref_imgs))
+
+        reconstruction_loss = 0
+        b, _, h, w = depth.size()
+        ref_imgs_scaled = [F.interpolate(ref_img, (h, w), mode='area') for ref_img in ref_imgs]
+        
+
+        pose_mat = multiply_pose(pose,rotation_mode=rotation_mode).to(device)
+        ref_img_warped, valid_points = inverse_warp_new(ref_imgs_scaled[0], depth[:,0], pose_mat, intrinsics,
+                                                        rotation_mode='euler', padding_mode='zeros')
+        
+        diff = (ref_imgs_scaled[1] - ref_img_warped) * valid_points.unsqueeze(1).float()
+        
+        if explainability_mask is not None:
+            diff = diff * explainability_mask[:,0:1].expand_as(diff) * explainability_mask[:,1:2].expand_as(diff)
+       
+        reconstruction_loss += diff.abs().mean()
+        assert((reconstruction_loss == reconstruction_loss).item() == 1)
+
+        return reconstruction_loss
+
+    if type(explainability_mask) not in [tuple, list]:
+        explainability_mask = [explainability_mask]
+    if type(depth) not in [list, tuple]:
+        depth = [depth]
+
+    total_loss = 0
+    for d, mask in zip(depth, explainability_mask):
+        total_loss += one_scale(d, mask)
+    return total_loss
 
 def explainability_loss(mask):
     if type(mask) not in [tuple, list]:
